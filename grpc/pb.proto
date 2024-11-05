@@ -1,0 +1,13 @@
+syntax = "proto3";
+option go_package = "example/ricard/grpc/proto";
+
+service RicardService {
+    rpc Request(Message) returns (Empty);
+}
+
+message Message {
+    int64 time = 1;
+    int64 process = 2;
+}
+
+message Empty {}
