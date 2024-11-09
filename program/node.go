@@ -121,13 +121,13 @@ func (s *Node) enter() {
 	replies.Wait()
 	s.chg.Lock()
 	s.state = HELD
-	s.time++
 	s.chg.Unlock()
 }
 
 func (s *Node) exit() {
 	s.chg.Lock()
 	s.state = RELEASED
+	s.time++
 	s.chg.Unlock()
 main:
 	for {
