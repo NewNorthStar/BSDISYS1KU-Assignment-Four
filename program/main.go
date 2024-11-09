@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const N = 20
+const N = 5
 
 func main() {
 	instances := make([]string, N, N)
