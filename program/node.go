@@ -58,11 +58,14 @@ func (s *Node) Run() {
 	for {
 		s.enter()
 		if critical.TryLock() {
-			time.Sleep(50 * time.Millisecond)
+			log.Printf("%v LOCK\n", s.Number)
+			time.Sleep(500 * time.Millisecond)
 			critical.Unlock()
+			log.Printf("%v unlock\n", s.Number)
 		} else {
-			log.Panicf("%v Could not lock as agreed!\n", s.Number)
+			log.Panicf("%v Could not lock!\n", s.Number)
 		}
+		s.time++
 		s.exit()
 	}
 }

@@ -22,5 +22,11 @@ func main() {
 		go nodes[i].Connect()
 	}
 
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 100)
+
+	for _, node := range nodes {
+		go node.Run()
+	}
+
+	time.Sleep(time.Second * 10)
 }
