@@ -19,7 +19,7 @@ func main() {
 			Address:   instances[i],
 			Instances: instances,
 		}
-		go nodes[i].Launch()
+		go nodes[i].Connect()
 	}
 
 	time.Sleep(time.Second)
