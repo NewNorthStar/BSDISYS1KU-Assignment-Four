@@ -85,7 +85,6 @@ func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, e
 func (s *Node) enter() {
 	s.chg.Lock()
 	s.state = WANTED
-	s.time++
 	msg := proto.Message{Time: s.time, Process: s.Number}
 	s.chg.Unlock()
 
@@ -101,7 +100,12 @@ func (s *Node) enter() {
 		go func(address *string) {
 			defer replies.Done()
 			conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			defer conn.Close()
+			defer func(conn *grpc.ClientConn) {
+				err := conn.Close()
+				if err != nil {
+					log.Fatalf("%v Failed to close grpcClientConn.", s.Number)
+				}
+			}(conn)
 			if err != nil {
 				log.Fatalf("Failed to obtain connection: %v\n", err)
 			}
@@ -117,6 +121,7 @@ func (s *Node) enter() {
 	replies.Wait()
 	s.chg.Lock()
 	s.state = HELD
+	s.time++
 	s.chg.Unlock()
 }
 
