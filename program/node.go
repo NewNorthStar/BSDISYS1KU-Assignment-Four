@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"log"
+	"net"
 	"sync"
 	"time"
 
 	proto "example.com/ricard/grpc"
+	"google.golang.org/grpc"
 )
 
 var myProcessNumber int64 = time.Now().Unix()
@@ -21,15 +24,31 @@ const (
 	HELD     state = 3
 )
 
-type RicardServer struct {
+type Node struct {
 	proto.UnimplementedRicardServiceServer
+	Address   string
+	Instances []string
 }
 
-func main() {
+func (s *Node) Launch() {
+	listener, err := net.Listen("tcp", s.Address)
+	if err != nil {
+		log.Fatalf("Failed to establish listener: %v\n", err)
+	}
+	grpcServer := grpc.NewServer()
+	proto.RegisterRicardServiceServer(grpcServer, s)
+	log.Printf("%v ready for service.\n", listener.Addr())
+	err = grpcServer.Serve(listener)
+	if err != nil {
+		log.Fatalf("failed to establish service: %v\n", err)
+	}
+}
+
+func (s *Node) RunTasks() {
 
 }
 
-func (s *RicardServer) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
+func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
 	if myState == HELD || myState == WANTED && comesAfterMe(msg) {
 		<-queue
 	}
