@@ -60,7 +60,7 @@ func (s *Node) Run() {
 		s.enter()
 		if critical.TryLock() {
 			log.Printf("%v LOCK\n", s.Number)
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 			critical.Unlock()
 			log.Printf("%v unlock\n", s.Number)
 		} else {
