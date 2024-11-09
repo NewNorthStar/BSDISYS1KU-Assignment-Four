@@ -32,7 +32,7 @@ type Node struct {
 
 func (s *Node) init() {
 	s.time = 1
-	s.state = RELEASED
+	s.state = WANTED
 	s.queue = make(chan bool)
 }
 
@@ -85,6 +85,7 @@ func (s *Node) enter() {
 		if s.Instances[i] == s.Address {
 			continue
 		}
+
 		replies.Add(1)
 		go func(address *string) {
 			defer replies.Done()
@@ -96,6 +97,7 @@ func (s *Node) enter() {
 			if err != nil {
 				log.Fatalf("Failed to obtain connection: %v\n", err)
 			}
+			log.Printf("%v got return from %s\n", s.Number, *address)
 		}(&s.Instances[i])
 	}
 
