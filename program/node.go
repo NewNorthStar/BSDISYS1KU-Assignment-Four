@@ -9,6 +9,7 @@ import (
 
 	proto "example.com/ricard/grpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type state int64
@@ -82,10 +83,17 @@ func (s *Node) enter() {
 			continue
 		}
 		replies.Add(1)
-		go func() {
+		go func(address *string) {
 			defer replies.Done()
-			// Contact other node
-		}()
+			conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Fatalf("Failed to obtain connection: %v\n", err)
+			}
+			_, err = proto.NewRicardServiceClient(conn).Request(context.Background(), &proto.Message{Time: s.time, Process: s.Number})
+			if err != nil {
+				log.Fatalf("Failed to obtain connection: %v\n", err)
+			}
+		}(&s.Instances[i])
 	}
 
 	replies.Wait()
