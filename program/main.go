@@ -13,8 +13,9 @@ func main() {
 		instances[i] = "localhost:" + strconv.Itoa(5050+i)
 	}
 	nodes := make([]Node, N, N)
-	for i := 0; i < N; i++ {
+	for i := int64(0); i < N; i++ {
 		nodes[i] = Node{
+			Number:    i,
 			Address:   instances[i],
 			Instances: instances,
 		}
