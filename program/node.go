@@ -5,16 +5,10 @@ import (
 	"log"
 	"net"
 	"sync"
-	"time"
 
 	proto "example.com/ricard/grpc"
 	"google.golang.org/grpc"
 )
-
-var myProcessNumber int64 = time.Now().Unix()
-var myTime int64 = 1
-var myState state = RELEASED
-var queue chan bool = make(chan bool)
 
 type state int64
 
@@ -26,11 +20,22 @@ const (
 
 type Node struct {
 	proto.UnimplementedRicardServiceServer
+	Number    int64
 	Address   string
 	Instances []string
+	time      int64
+	state     state
+	queue     chan bool
+}
+
+func (s *Node) init() {
+	s.time = 1
+	s.state = RELEASED
+	s.queue = make(chan bool)
 }
 
 func (s *Node) Launch() {
+	s.init()
 	listener, err := net.Listen("tcp", s.Address)
 	if err != nil {
 		log.Fatalf("Failed to establish listener: %v\n", err)
@@ -49,14 +54,14 @@ func (s *Node) RunTasks() {
 }
 
 func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
-	if myState == HELD || myState == WANTED && comesAfterMe(msg) {
-		<-queue
+	if s.state == HELD || s.state == WANTED && s.comesAfterMe(msg) {
+		<-s.queue
 	}
 	return &proto.Empty{}, nil
 }
 
-func enter() {
-	myState = WANTED
+func (s *Node) enter() {
+	s.state = WANTED
 	var replies sync.WaitGroup
 
 	for i := 0; i < 3; i++ {
@@ -69,25 +74,25 @@ func enter() {
 	}
 
 	replies.Wait()
-	myState = HELD
+	s.state = HELD
 }
 
-func exit() {
-	myState = RELEASED
+func (s *Node) exit() {
+	s.state = RELEASED
 main:
 	for {
 		select {
-		case queue <- true:
+		case s.queue <- true:
 		default:
 			break main
 		}
 	}
 }
 
-func comesAfterMe(msg *proto.Message) bool {
-	if myTime != msg.Time {
-		return myTime < msg.Time
+func (s *Node) comesAfterMe(msg *proto.Message) bool {
+	if s.time != msg.Time {
+		return s.time < msg.Time
 	} else {
-		return myProcessNumber < msg.Process
+		return s.Number < msg.Process
 	}
 }
