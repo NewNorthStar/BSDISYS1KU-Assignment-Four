@@ -60,7 +60,7 @@ func (s *Node) Run() {
 		s.enter()
 		if critical.TryLock() {
 			log.Printf("%v LOCK\n", s.Number)
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(60 * time.Millisecond)
 			critical.Unlock()
 			log.Printf("%v unlock\n", s.Number)
 		} else {
@@ -79,7 +79,6 @@ func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, e
 	if x {
 		<-s.queue
 	}
-	s.time = max(s.time, msg.Time) // TODO: Hvis jeg modtager et senere timestamp, skal jeg opdatere min tid.
 	return &proto.Empty{}, nil
 }
 
