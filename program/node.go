@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	proto "example.com/ricard/grpc"
 	"google.golang.org/grpc"
@@ -34,7 +35,7 @@ func (s *Node) init() {
 	s.queue = make(chan bool)
 }
 
-func (s *Node) Launch() {
+func (s *Node) Connect() {
 	s.init()
 	listener, err := net.Listen("tcp", s.Address)
 	if err != nil {
@@ -49,8 +50,20 @@ func (s *Node) Launch() {
 	}
 }
 
-func (s *Node) RunTasks() {
+// Nodes must agree to enter this critical section in turn.
+var critical sync.Mutex
 
+func (s *Node) Run() {
+	for {
+		s.enter()
+		if critical.TryLock() {
+			time.Sleep(50 * time.Millisecond)
+			critical.Unlock()
+		} else {
+			log.Panicf("%v Could not lock as agreed!\n", s.Number)
+		}
+		s.exit()
+	}
 }
 
 func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
@@ -64,9 +77,11 @@ func (s *Node) enter() {
 	s.state = WANTED
 	var replies sync.WaitGroup
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < len(s.Instances); i++ {
+		if s.Instances[i] == s.Address {
+			continue
+		}
 		replies.Add(1)
-
 		go func() {
 			defer replies.Done()
 			// Contact other node
