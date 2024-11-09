@@ -74,11 +74,13 @@ func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, e
 	if s.state == HELD || s.state == WANTED && s.comesAfterMe(msg) {
 		<-s.queue
 	}
+	// TODO: Hvis jeg modtager et senere timestamp, skal jeg opdatere min tid.
 	return &proto.Empty{}, nil
 }
 
 func (s *Node) enter() {
 	s.state = WANTED
+	// TODO: Jeg skal lægge til den logiske tid, så jeg er bag i køen ift. eventuelle imødekommende requests.
 	var replies sync.WaitGroup
 
 	for i := 0; i < len(s.Instances); i++ {
