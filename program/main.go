@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const N = 5
+const N = 20
 
 func main() {
 	instances := make([]string, N, N)
@@ -22,11 +22,11 @@ func main() {
 		go nodes[i].Connect()
 	}
 
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 1000)
 
-	for _, node := range nodes {
-		go node.Run()
+	for i := 0; i < N; i++ {
+		go nodes[i].Run()
 	}
 
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 30)
 }

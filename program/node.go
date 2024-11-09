@@ -28,11 +28,12 @@ type Node struct {
 	time      int64
 	state     state
 	queue     chan bool
+	chg       sync.Mutex
 }
 
 func (s *Node) init() {
-	s.time = 1
-	s.state = WANTED
+	s.time = 0
+	s.state = RELEASED
 	s.queue = make(chan bool)
 }
 
@@ -59,27 +60,36 @@ func (s *Node) Run() {
 		s.enter()
 		if critical.TryLock() {
 			log.Printf("%v LOCK\n", s.Number)
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			critical.Unlock()
 			log.Printf("%v unlock\n", s.Number)
 		} else {
 			log.Panicf("%v Could not lock!\n", s.Number)
 		}
-		s.time++
 		s.exit()
 	}
 }
 
 func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
-	if s.state == HELD || s.state == WANTED && s.comesAfterMe(msg) {
+	s.chg.Lock()
+	x := s.state == HELD || s.state == WANTED && s.comesAfterMe(msg)
+	s.time = max(s.time, msg.Time)
+	s.chg.Unlock()
+
+	if x {
 		<-s.queue
 	}
-	// TODO: Hvis jeg modtager et senere timestamp, skal jeg opdatere min tid.
+	s.time = max(s.time, msg.Time) // TODO: Hvis jeg modtager et senere timestamp, skal jeg opdatere min tid.
 	return &proto.Empty{}, nil
 }
 
 func (s *Node) enter() {
+	s.chg.Lock()
 	s.state = WANTED
+	s.time++
+	msg := proto.Message{Time: s.time, Process: s.Number}
+	s.chg.Unlock()
+
 	// TODO: Jeg skal lægge til den logiske tid, så jeg er bag i køen ift. eventuelle imødekommende requests.
 	var replies sync.WaitGroup
 
@@ -92,22 +102,27 @@ func (s *Node) enter() {
 		go func(address *string) {
 			defer replies.Done()
 			conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			defer conn.Close()
 			if err != nil {
 				log.Fatalf("Failed to obtain connection: %v\n", err)
 			}
-			_, err = proto.NewRicardServiceClient(conn).Request(context.Background(), &proto.Message{Time: s.time, Process: s.Number})
+			//log.Printf("%v requesting %s, time %v\n", s.Number, *address, s.time)
+			_, err = proto.NewRicardServiceClient(conn).Request(context.Background(), &msg)
 			if err != nil {
 				log.Fatalf("Failed to obtain connection: %v\n", err)
 			}
-			log.Printf("%v got return from %s\n", s.Number, *address)
+			//log.Printf("%v got return from %s\n", s.Number, *address)
 		}(&s.Instances[i])
 	}
 
 	replies.Wait()
+	s.chg.Lock()
 	s.state = HELD
+	s.chg.Unlock()
 }
 
 func (s *Node) exit() {
+	s.chg.Lock()
 	s.state = RELEASED
 main:
 	for {
@@ -117,6 +132,7 @@ main:
 			break main
 		}
 	}
+	s.chg.Unlock()
 }
 
 func (s *Node) comesAfterMe(msg *proto.Message) bool {
