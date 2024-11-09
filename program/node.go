@@ -123,6 +123,7 @@ func (s *Node) enter() {
 func (s *Node) exit() {
 	s.chg.Lock()
 	s.state = RELEASED
+	s.chg.Unlock()
 main:
 	for {
 		select {
@@ -131,7 +132,6 @@ main:
 			break main
 		}
 	}
-	s.chg.Unlock()
 }
 
 func (s *Node) comesAfterMe(msg *proto.Message) bool {
