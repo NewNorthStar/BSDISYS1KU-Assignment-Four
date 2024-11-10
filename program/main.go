@@ -1,32 +1,58 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 )
 
-const N = 20
+const n = 20
 
 func main() {
-	instances := make([]string, N, N)
-	for i := 0; i < N; i++ {
-		instances[i] = "localhost:" + strconv.Itoa(5050+i)
+	addresses := createAddressList()
+	nodes := createNodes(addresses)
+	time.Sleep(time.Second) // Grace period for node service listener startup.
+	runAllNodes(nodes)
+	time.Sleep(time.Second * 30) // Duration of run.
+}
+
+/*
+Creates a list of localhost addresses which nodes will be connected to.
+
+Supplied to all the nodes as a stand in for service discovery.
+*/
+func createAddressList() []string {
+	list := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		a := "localhost:" + strconv.Itoa(5050+i)
+		list = append(list, a)
+		fmt.Println(a)
 	}
-	nodes := make([]Node, N, N)
-	for i := int64(0); i < N; i++ {
-		nodes[i] = Node{
+	return list
+}
+
+/*
+Creates the nodes, connected to their addresses and with the gRPC service running.
+*/
+func createNodes(addresses []string) []*Node {
+	nodes := make([]*Node, 0, n)
+	for i := int64(0); i < n; i++ {
+		node := Node{
 			Number:    i,
-			Address:   instances[i],
-			Instances: instances,
+			Address:   addresses[i],
+			Instances: addresses,
 		}
-		go nodes[i].Connect()
+		nodes = append(nodes, &node)
+		node.Connect()
 	}
+	return nodes
+}
 
-	time.Sleep(time.Millisecond * 1000)
-
-	for i := 0; i < N; i++ {
-		go nodes[i].Run()
+/*
+Starts the client side 'Run()' function of all nodes as a coroutine.
+*/
+func runAllNodes(nodes []*Node) {
+	for _, node := range nodes {
+		node.Run()
 	}
-
-	time.Sleep(time.Second * 30)
 }
