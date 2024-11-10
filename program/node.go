@@ -12,6 +12,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+/*
+Enumerate representing the logical state of access to the CS.
+
+As shown in the Ricart Agrawala Algorithm example
+given at lecture 7, Distributed Systems E2024 at ITU.
+*/
 type state int64
 
 const (
@@ -38,6 +44,11 @@ func (s *Node) init() {
 	s.replySignal = make(chan bool)
 }
 
+//// SERVER SIDE FUNCTIONS ////
+
+/*
+Sets up and runs the server side of the node as a coroutine.
+*/
 func (s *Node) Connect() {
 	s.init()
 	listener, err := net.Listen("tcp", s.Address)
@@ -47,32 +58,13 @@ func (s *Node) Connect() {
 	grpcServer := grpc.NewServer()
 	proto.RegisterRicardServiceServer(grpcServer, s)
 	log.Printf("%v ready for service.\n", listener.Addr())
-	err = grpcServer.Serve(listener)
-	if err != nil {
-		log.Fatalf("failed to establish service: %v\n", err)
-	}
-}
 
-// Nodes must enter this critical section legally.
-var critical sync.Mutex
-
-/*
-Working logic of the node client-side.
-The node will continuously attempt to reach the CS, and panics if it tries an illegal access.
-*/
-func (s *Node) Run() {
-	for {
-		s.enter()
-		if critical.TryLock() {
-			log.Printf("%v LOCK\n", s.Number)
-			time.Sleep(200 * time.Millisecond)
-			critical.Unlock()
-			log.Printf("%v unlock\n", s.Number)
-		} else {
-			log.Panicf("%v Could not lock!\n", s.Number)
+	go func() {
+		err := grpcServer.Serve(listener)
+		if err != nil {
+			log.Fatalf("failed to establish service: %v\n", err)
 		}
-		s.exit()
-	}
+	}()
 }
 
 func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
@@ -90,6 +82,48 @@ func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, e
 	s.time = max(s.time, msg.Time)
 	s.chg.Unlock()
 	return &proto.Empty{}, nil
+}
+
+func (s *Node) comesAfterMe(msg *proto.Message) bool {
+	if s.time != msg.Time {
+		return s.time < msg.Time
+	} else {
+		return s.Number < msg.Process
+	}
+}
+
+//// CLIENT SIDE FUNCTIONS ////
+
+/*
+Runs the client side of the node as a coroutine.
+*/
+func (s *Node) Run() {
+	go s.clientSideRoutine()
+}
+
+/*
+Nodes must enter this critical section legally.
+*/
+var critical sync.Mutex
+
+/*
+Work sequence of the node client side.
+
+The node will continuously attempt to reach the CS, and panics if it tries an illegal access.
+*/
+func (s *Node) clientSideRoutine() {
+	for {
+		s.enter()
+		if critical.TryLock() {
+			log.Printf("%v LOCK\n", s.Number)
+			time.Sleep(200 * time.Millisecond)
+			critical.Unlock()
+			log.Printf("%v unlock\n", s.Number)
+		} else {
+			log.Panicf("%v Could not lock!\n", s.Number)
+		}
+		s.exit()
+	}
 }
 
 func (s *Node) enter() {
@@ -147,12 +181,4 @@ main:
 	s.state = RELEASED
 	s.time++
 	s.chg.Unlock()
-}
-
-func (s *Node) comesAfterMe(msg *proto.Message) bool {
-	if s.time != msg.Time {
-		return s.time < msg.Time
-	} else {
-		return s.Number < msg.Process
-	}
 }
