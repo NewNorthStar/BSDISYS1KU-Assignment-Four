@@ -22,19 +22,20 @@ const (
 
 type Node struct {
 	proto.UnimplementedRicardServiceServer
-	Number    int64
-	Address   string
-	Instances []string
-	time      int64
-	state     state
-	queue     chan bool
-	chg       sync.Mutex
+	Number      int64
+	Address     string
+	Instances   []string
+	time        int64
+	state       state
+	replySignal chan bool
+	replyGroup  sync.WaitGroup
+	chg         sync.Mutex
 }
 
 func (s *Node) init() {
 	s.time = 0
 	s.state = RELEASED
-	s.queue = make(chan bool)
+	s.replySignal = make(chan bool)
 }
 
 func (s *Node) Connect() {
@@ -52,9 +53,13 @@ func (s *Node) Connect() {
 	}
 }
 
-// Nodes must agree to enter this critical section in turn.
+// Nodes must enter this critical section legally.
 var critical sync.Mutex
 
+/*
+Working logic of the node client-side.
+The node will continuously attempt to reach the CS, and panics if it tries an illegal access.
+*/
 func (s *Node) Run() {
 	for {
 		s.enter()
@@ -73,12 +78,17 @@ func (s *Node) Run() {
 func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
 	s.chg.Lock()
 	x := s.state == HELD || s.state == WANTED && s.comesAfterMe(msg)
-	s.time = max(s.time, msg.Time)
 	s.chg.Unlock()
 
 	if x {
-		<-s.queue
+		s.replyGroup.Add(1)
+		defer s.replyGroup.Done()
+		<-s.replySignal
 	}
+
+	s.chg.Lock()
+	s.time = max(s.time, msg.Time)
+	s.chg.Unlock()
 	return &proto.Empty{}, nil
 }
 
@@ -88,7 +98,6 @@ func (s *Node) enter() {
 	msg := proto.Message{Time: s.time, Process: s.Number}
 	s.chg.Unlock()
 
-	// TODO: Jeg skal lægge til den logiske tid, så jeg er bag i køen ift. eventuelle imødekommende requests.
 	var replies sync.WaitGroup
 
 	for i := 0; i < len(s.Instances); i++ {
@@ -125,18 +134,19 @@ func (s *Node) enter() {
 }
 
 func (s *Node) exit() {
-	s.chg.Lock()
-	s.state = RELEASED
-	s.time++
-	s.chg.Unlock()
 main:
 	for {
 		select {
-		case s.queue <- true:
+		case s.replySignal <- true:
 		default:
 			break main
 		}
 	}
+	s.replyGroup.Wait()
+	s.chg.Lock()
+	s.state = RELEASED
+	s.time++
+	s.chg.Unlock()
 }
 
 func (s *Node) comesAfterMe(msg *proto.Message) bool {
