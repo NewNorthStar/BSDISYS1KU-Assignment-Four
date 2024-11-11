@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 )
@@ -26,7 +25,6 @@ func createAddressList() []string {
 	for i := 0; i < n; i++ {
 		a := "localhost:" + strconv.Itoa(5050+i)
 		list = append(list, a)
-		fmt.Println(a)
 	}
 	return list
 }
