@@ -138,10 +138,10 @@ func (s *Node) clientSideRoutine() {
 	for {
 		s.enter()
 		if critical.TryLock() {
-			s.log.Printf("%v LOCK\n", s.Number)
+			s.log.Printf("%v LOCK at time: %v\n", s.Number, s.time)
 			time.Sleep(1000 * time.Millisecond)
 			critical.Unlock()
-			s.log.Printf("%v unlock\n", s.Number)
+			s.log.Printf("%v unlock at time: %v\n", s.Number, s.time)
 		} else {
 			s.log.Panicf("%v Could not lock!\n", s.Number)
 		}
