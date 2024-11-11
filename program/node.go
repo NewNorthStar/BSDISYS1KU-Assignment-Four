@@ -86,6 +86,7 @@ func (s *Node) Connect() {
 Handles replies to other nodes.
 */
 func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
+	defer s.log.Printf("%v replied to %v", s.Number, msg.Process)
 	s.chg.Lock()
 	x := s.state == HELD || s.state == WANTED && s.comesAfterMe(msg)
 	s.chg.Unlock()
@@ -93,7 +94,6 @@ func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, e
 	if x {
 		s.replyGroup.Add(1)
 		defer s.replyGroup.Done()
-		defer s.log.Printf("%v replied to %v", s.Number, msg.Process)
 		<-s.replySignal
 	}
 
