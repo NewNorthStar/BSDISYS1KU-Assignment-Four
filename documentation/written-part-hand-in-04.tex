@@ -1,0 +1,194 @@
+\documentclass[a4paper,11pt]{article}
+
+% Import packages
+\usepackage[a4paper]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{pgf-umlsd}
+\usepackage{listings}
+
+% Allows the system logs to be shown verbatim with line wrapping.
+% https://tex.stackexchange.com/questions/144979/wrap-lines-in-verbatim#:~:text=One%20way%20would%20be%20to%20add%20the%20listings,breaklines%3Dtrue%20to%20the%20package%20options%2C%20or%20to%20lstset.
+\lstset{
+basicstyle=\small\ttfamily,
+columns=flexible,
+breaklines=true
+}
+
+% based on \newthread macro from pgf-umlsd.sty
+% add fourth argument (third mandatory) that defines the xshift of a thread.
+% that argument gets passed to \newinst, which has an optional
+% argument that defines the shift
+\newcommand{\newthreadShift}[4][gray!30]{
+  \newinst[#4]{#2}{#3}
+  \stepcounter{threadnum}
+  \node[below of=inst\theinstnum,node distance=0.8cm] (thread\thethreadnum) {};
+  \tikzstyle{threadcolor\thethreadnum}=[fill=#1]
+  \tikzstyle{instcolor#2}=[fill=#1]
+}
+
+% Set title, author name and date
+\title{Distributed Mutual Exclusion - Report}
+\author{rono, ghej, luvr @ ITU, Group ``G.L.R''}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\pagebreak
+
+\section{Link to Project on GitHub}
+https://github.com/NewNorthStar/BSDISYS1KU-Assignment-Four
+
+\section{Method}
+
+\subsection{R1}
+
+We have implemented the peer nodes as a set of coroutines. These communicate over gRPC services instead of channels, adding the challenge of an asynchronous operating environment. The critical section is represented by a single shared Mutex. The program will panic if a node tries to obtain lock on the Mutex when already locked. 
+
+\subsection{R2 and R3}
+
+We have chosen to use the Ricart Agrawala Algorithm, as presented at lecture 7, to solve this assignment. The operating principle is as follows:
+
+\begin{enumerate}
+    \item To obtain permission to access the critical section (CS), a node must request and receive permission from its peers. In a request, the node will state its name and logical time. 
+    \item When a peer receives a request, it has two options:
+    \begin{enumerate}
+        \item If not in need of the CS itself, it replies right away, thus giving permission.
+        \item Else, it can compare the message to its own effort to obtain permission. If it has priority, then the reply is deferred. (Queued for when its own access is released.)
+    \end{enumerate}
+    \item Once a node has obtained a reply from all peers, it has permission to access the CS. When finished, it replies to any peers it has queued for a reply.
+    \item When giving replies, the logical time of the node updates. This ensures that following requests by that node will always have lower priority in comparison to permissions just given by those replies. 
+\end{enumerate}
+
+When a node tries to secure permission to the CS, this action will always have lower priority than any requests replied to by that node. This ensures both safety and liveness within the system. All peers will get their access before this node gets a new turn. 
+
+\section{Discussion}
+
+\subsection{Reflection, Known Issues}
+
+In our implementation, the challenge has mainly been to ensure coordination between service and client side routines of each node. In particular, the service and client side of the node are different coroutines that need to coordinate through locks and channels.
+
+\bigbreak
+
+In the state of the program as handed in. The critical section is handled safely across many nodes, provided that the CS access time is not too short. ($t > 50$ ms) There is currently a risk that the nodes reach a deadlock, if the CS access time is shorter than this. 
+
+\subsection{Description of Run}
+
+As an example we have appended the log files for a run of 3 nodes. In the logs, we see that all nodes start at logical time 0. Here at first, priority for access to the CS is resolved by the total ordering of the nodes. Nodes reply immediately to peers with higher priority by time or else node order. 
+
+In our implementation, nodes are always eager to access the CS again immediately after exiting. This causes the access pattern $0, 1, 2, 0, 1, 2 ...$ to emerge. We have tested the system successfully with some nodes not wanting to access the CS, while still permitting others to do so. 
+
+\pagebreak
+
+\section{Log Files}
+
+\subsection{Node 0}
+\begin{lstlisting}
+  127.0.0.1:5050 ready for service.
+0 requesting 2, time 0
+0 requesting 1, time 0
+0 got return from 1
+0 got return from 2
+0 LOCK at time: 0
+0 unlock at time: 0
+0 replied to 2
+0 replied to 1
+0 requesting 2, time 1
+0 requesting 1, time 1
+0 got return from 1
+0 got return from 2
+0 LOCK at time: 1
+0 unlock at time: 1
+0 replied to 2
+0 replied to 1
+0 requesting 2, time 4
+0 requesting 1, time 4
+0 got return from 1
+0 got return from 2
+0 LOCK at time: 4
+0 unlock at time: 4
+0 replied to 2
+0 replied to 1
+0 requesting 2, time 7
+0 requesting 1, time 7
+0 got return from 1
+0 got return from 2
+0 LOCK at time: 7
+\end{lstlisting}
+
+\pagebreak
+
+\subsection{Node 1}
+\begin{lstlisting}
+127.0.0.1:5051 ready for service.
+1 requesting 2, time 0
+1 requesting 0, time 0
+1 replied to 0
+1 got return from 2
+1 got return from 0
+1 LOCK at time: 0
+1 unlock at time: 0
+1 replied to 0
+1 replied to 2
+1 requesting 0, time 2
+1 requesting 2, time 2
+1 got return from 2
+1 got return from 0
+1 LOCK at time: 2
+1 unlock at time: 2
+1 replied to 2
+1 replied to 0
+1 requesting 0, time 5
+1 requesting 2, time 5
+1 got return from 2
+1 got return from 0
+1 LOCK at time: 5
+1 unlock at time: 5
+1 replied to 0
+1 replied to 2
+1 requesting 2, time 8
+1 requesting 0, time 8
+1 got return from 2
+\end{lstlisting}
+
+\pagebreak
+
+\subsection{Node 2}
+\begin{lstlisting}
+127.0.0.1:5052 ready for service.
+2 requesting 1, time 0
+2 requesting 0, time 0
+2 replied to 0
+2 replied to 1
+2 got return from 0
+2 got return from 1
+2 LOCK at time: 0
+2 unlock at time: 0
+2 replied to 1
+2 replied to 0
+2 requesting 0, time 3
+2 requesting 1, time 3
+2 got return from 0
+2 got return from 1
+2 LOCK at time: 3
+2 unlock at time: 3
+2 replied to 1
+2 replied to 0
+2 requesting 1, time 6
+2 requesting 0, time 6
+2 got return from 0
+2 got return from 1
+2 LOCK at time: 6
+2 unlock at time: 6
+2 replied to 1
+2 replied to 0
+2 requesting 1, time 9
+2 requesting 0, time 9
+\end{lstlisting}
+
+\end{document}
