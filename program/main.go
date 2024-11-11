@@ -5,14 +5,14 @@ import (
 	"time"
 )
 
-const n = 20
+const n = 3
 
 func main() {
 	addresses := createAddressList()
 	nodes := createNodes(addresses)
 	time.Sleep(time.Second) // Grace period for node service listener startup.
 	runAllNodes(nodes)
-	time.Sleep(time.Second * 30) // Duration of run.
+	time.Sleep(time.Second * 10) // Duration of run.
 }
 
 /*

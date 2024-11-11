@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -36,12 +38,19 @@ type Node struct {
 	replySignal chan bool
 	replyGroup  sync.WaitGroup
 	chg         sync.Mutex
+	log         log.Logger
 }
 
 func (s *Node) init() {
 	s.time = 0
 	s.state = RELEASED
 	s.replySignal = make(chan bool)
+
+	file, err := os.Create(strconv.FormatInt(s.Number, 10) + ".txt")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	s.log.SetOutput(file)
 }
 
 //// SERVER SIDE FUNCTIONS ////
@@ -53,16 +62,16 @@ func (s *Node) Connect() {
 	s.init()
 	listener, err := net.Listen("tcp", s.Address)
 	if err != nil {
-		log.Fatalf("Failed to establish listener: %v\n", err)
+		s.log.Fatalf("Failed to establish listener: %v\n", err)
 	}
 	grpcServer := grpc.NewServer()
 	proto.RegisterRicardServiceServer(grpcServer, s)
-	log.Printf("%v ready for service.\n", listener.Addr())
+	s.log.Printf("%v ready for service.\n", listener.Addr())
 
 	go func() {
 		err := grpcServer.Serve(listener)
 		if err != nil {
-			log.Fatalf("failed to establish service: %v\n", err)
+			s.log.Fatalf("failed to establish service: %v\n", err)
 		}
 	}()
 }
@@ -75,6 +84,7 @@ func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, e
 	if x {
 		s.replyGroup.Add(1)
 		defer s.replyGroup.Done()
+		defer s.log.Printf("%v replied to %v", s.Number, msg.Process)
 		<-s.replySignal
 	}
 
@@ -115,12 +125,12 @@ func (s *Node) clientSideRoutine() {
 	for {
 		s.enter()
 		if critical.TryLock() {
-			log.Printf("%v LOCK\n", s.Number)
-			time.Sleep(200 * time.Millisecond)
+			s.log.Printf("%v LOCK\n", s.Number)
+			time.Sleep(1000 * time.Millisecond)
 			critical.Unlock()
-			log.Printf("%v unlock\n", s.Number)
+			s.log.Printf("%v unlock\n", s.Number)
 		} else {
-			log.Panicf("%v Could not lock!\n", s.Number)
+			s.log.Panicf("%v Could not lock!\n", s.Number)
 		}
 		s.exit()
 	}
@@ -140,25 +150,25 @@ func (s *Node) enter() {
 		}
 
 		replies.Add(1)
-		go func(address *string) {
+		go func(address *string, index int) {
 			defer replies.Done()
 			conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			defer func(conn *grpc.ClientConn) {
 				err := conn.Close()
 				if err != nil {
-					log.Fatalf("%v Failed to close grpcClientConn.", s.Number)
+					s.log.Fatalf("%v Failed to close grpcClientConn.", s.Number)
 				}
 			}(conn)
 			if err != nil {
-				log.Fatalf("Failed to obtain connection: %v\n", err)
+				s.log.Fatalf("Failed to obtain connection: %v\n", err)
 			}
-			//log.Printf("%v requesting %s, time %v\n", s.Number, *address, s.time)
+			s.log.Printf("%v requesting %v, time %v\n", s.Number, index, s.time)
 			_, err = proto.NewRicardServiceClient(conn).Request(context.Background(), &msg)
 			if err != nil {
-				log.Fatalf("Failed to obtain connection: %v\n", err)
+				s.log.Fatalf("Failed to obtain connection: %v\n", err)
 			}
-			//log.Printf("%v got return from %s\n", s.Number, *address)
-		}(&s.Instances[i])
+			s.log.Printf("%v got return from %v\n", s.Number, index)
+		}(&s.Instances[i], i)
 	}
 
 	replies.Wait()
