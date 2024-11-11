@@ -28,6 +28,9 @@ const (
 	HELD     state = 3
 )
 
+/*
+Each node runs as a coroutine, with the resources and states in this struct.
+*/
 type Node struct {
 	proto.UnimplementedRicardServiceServer
 	Number      int64
@@ -41,6 +44,9 @@ type Node struct {
 	log         log.Logger
 }
 
+/*
+Setup default values for a node.
+*/
 func (s *Node) init() {
 	s.time = 0
 	s.state = RELEASED
@@ -56,7 +62,7 @@ func (s *Node) init() {
 //// SERVER SIDE FUNCTIONS ////
 
 /*
-Sets up and runs the server side of the node as a coroutine.
+Setup and run the server side of the node as a coroutine.
 */
 func (s *Node) Connect() {
 	s.init()
@@ -76,6 +82,9 @@ func (s *Node) Connect() {
 	}()
 }
 
+/*
+Handles replies to other nodes.
+*/
 func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, error) {
 	s.chg.Lock()
 	x := s.state == HELD || s.state == WANTED && s.comesAfterMe(msg)
@@ -94,6 +103,10 @@ func (s *Node) Request(ctx context.Context, msg *proto.Message) (*proto.Empty, e
 	return &proto.Empty{}, nil
 }
 
+/*
+Compares a message to this node.
+In the case where both want to access the CS.
+*/
 func (s *Node) comesAfterMe(msg *proto.Message) bool {
 	if s.time != msg.Time {
 		return s.time < msg.Time
@@ -136,47 +149,67 @@ func (s *Node) clientSideRoutine() {
 	}
 }
 
+/*
+Secure permission to enter the critical section.
+*/
 func (s *Node) enter() {
 	s.chg.Lock()
 	s.state = WANTED
-	msg := proto.Message{Time: s.time, Process: s.Number}
+	msg := &proto.Message{Time: s.time, Process: s.Number}
 	s.chg.Unlock()
 
 	var replies sync.WaitGroup
 
 	for i := 0; i < len(s.Instances); i++ {
-		if s.Instances[i] == s.Address {
+		if s.Instances[i] == s.Address { // No self-requests
 			continue
 		}
 
 		replies.Add(1)
-		go func(address *string, index int) {
+		go func() {
 			defer replies.Done()
-			conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			defer func(conn *grpc.ClientConn) {
-				err := conn.Close()
-				if err != nil {
-					s.log.Fatalf("%v Failed to close grpcClientConn.", s.Number)
-				}
-			}(conn)
-			if err != nil {
-				s.log.Fatalf("Failed to obtain connection: %v\n", err)
-			}
-			s.log.Printf("%v requesting %v, time %v\n", s.Number, index, s.time)
-			_, err = proto.NewRicardServiceClient(conn).Request(context.Background(), &msg)
-			if err != nil {
-				s.log.Fatalf("Failed to obtain connection: %v\n", err)
-			}
-			s.log.Printf("%v got return from %v\n", s.Number, index)
-		}(&s.Instances[i], i)
+			s.obtainLockFromPeer(i, msg)
+		}()
 	}
 
 	replies.Wait()
+
 	s.chg.Lock()
 	s.state = HELD
 	s.chg.Unlock()
 }
 
+/*
+Request permission to access the critical section from peer.
+*/
+func (s *Node) obtainLockFromPeer(index int, msg *proto.Message) {
+	conn, err := grpc.NewClient(s.Instances[index], grpc.WithTransportCredentials(insecure.NewCredentials()))
+	defer func(conn *grpc.ClientConn) {
+		err := conn.Close()
+		if err != nil {
+			s.log.Fatalf("%v Failed to close grpcClientConn.", s.Number)
+		}
+	}(conn)
+	if err != nil {
+		s.log.Fatalf("Failed to obtain connection: %v\n", err)
+	}
+
+	s.log.Printf("%v requesting %v, time %v\n", s.Number, index, s.time)
+
+	_, err = proto.NewRicardServiceClient(conn).Request(context.Background(), msg)
+	if err != nil {
+		s.log.Fatalf("Failed to obtain connection: %v\n", err)
+	}
+
+	s.log.Printf("%v got return from %v\n", s.Number, index)
+}
+
+/*
+Release lock on the critical section. Reply to waiting nodes.
+
+Waits for replies to complete. Ensures that this node
+will then have a Lamport time later than any nodes it replied to.
+*/
 func (s *Node) exit() {
 main:
 	for {

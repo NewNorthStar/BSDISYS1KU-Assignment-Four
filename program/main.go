@@ -5,8 +5,12 @@ import (
 	"time"
 )
 
+// Edit to change the number of nodes.
 const n = 3
 
+/*
+Program execution entry point.
+*/
 func main() {
 	addresses := createAddressList()
 	nodes := createNodes(addresses)
